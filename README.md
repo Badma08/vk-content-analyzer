@@ -15,6 +15,8 @@
 - Python 3.8+
 - Активный VK Service Token
 
-### Установка зависимостей
+## 🚀 Установка
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/your-username/vk-engagement-analyzer.git
+cd vk-engagement-analyzer
+pip install -r requirements-dev.txt
