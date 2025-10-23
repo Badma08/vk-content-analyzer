@@ -17,6 +17,6 @@
 
 ## 🚀 Установка
 ```bash
-git clone https://github.com/your-username/vk-engagement-analyzer.git
-cd vk-engagement-analyzer
-pip install -r requirements-dev.txt
+git clone https://github.com/Badma08/vk-content-analyzer.git
+cd vk-content-analyzer
+pip install -r requirements.txt
