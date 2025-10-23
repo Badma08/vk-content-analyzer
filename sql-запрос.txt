@@ -1,0 +1,77 @@
+WITH
+-- Анализ по часам: группируем посты по часам публикации и вычисляем средние лайки
+-- ФИЛЬТРАЦИЯ: оставляем только те часы, где количество постов >= 50% от среднего количества постов в час
+-- Это исключает редкоиспользуемые часы с недостаточной статистической значимостью
+hour_analysis AS (
+    SELECT AVG(likes_count) AS avg_likes
+    FROM posts
+    GROUP BY hour
+    HAVING COUNT(*) >= (SELECT AVG(posts_count) * 0.5
+                       FROM (SELECT COUNT(*) as posts_count
+                             FROM posts
+                             GROUP BY hour))
+),
+
+-- Анализ по дням недели: группируем посты по дням недели и вычисляем средние лайки
+-- ФИЛЬТРАЦИЯ: оставляем только те дни, где количество постов >= 50% от среднего количества постов в день
+-- Это обеспечивает сравнение только статистически значимых дней
+day_analysis AS (
+    SELECT AVG(likes_count) AS avg_likes
+    FROM posts
+    GROUP BY day_of_week
+    HAVING COUNT(*) >= (SELECT AVG(posts_count) * 0.5
+                       FROM (SELECT COUNT(*) as posts_count
+                             FROM posts
+                             GROUP BY day_of_week))
+),
+
+-- Анализ по временным промежуткам: изучаем влияние интервалов между постами на engagement
+-- Используем оконную функцию LAG для определения времени предыдущего поста
+-- Переводим разницу во времени в часы и группируем по категориям
+gap_analysis AS (
+    WITH posts_with_prev_time AS (
+        SELECT (JULIANDAY(date) - JULIANDAY(LAG(date) OVER (ORDER BY date))) * 24 AS hours_gap, likes_count
+        FROM posts
+    )
+    SELECT
+        -- Категоризация временных промежутков для анализа паттернов публикации
+        CASE
+            WHEN hours_gap < 1 THEN 'Менее 1 часа'
+            WHEN hours_gap BETWEEN 1 AND 3 THEN '1-3 часа'
+            WHEN hours_gap BETWEEN 3 AND 6 THEN '3-6 часов'
+            WHEN hours_gap BETWEEN 6 AND 12 THEN '6-12 часов'
+            WHEN hours_gap BETWEEN 12 AND 24 THEN '12-24 часа'
+            ELSE 'Более 1 дня'
+        END AS gap,
+        AVG(likes_count) AS avg_likes
+    FROM posts_with_prev_time
+    WHERE hours_gap IS NOT NULL  -- Исключаем первую запись (нет предыдущего поста)
+    GROUP BY gap
+    -- ФИЛЬТРАЦИЯ: оставляем промежутки с достаточным количеством постов
+    -- Рассчитываем минимальный порог как 50% от среднего количества постов на категорию
+    -- (общее количество постов / 6 возможных категорий * 0.5)
+    HAVING COUNT(*) >= (SELECT COUNT(*) FROM posts) / 6 * 0.5
+),
+
+-- Сравнение силы влияния факторов: вычисляем разброс средних значений лайков
+-- для каждого фактора (разница между лучшим и худшим показателем)
+comparison AS (
+    SELECT 'Время суток' AS factor,
+           -- Сила влияния = разница между максимальным и минимальным средним количеством лайков по часам
+           (SELECT MAX(avg_likes) - MIN(avg_likes) FROM hour_analysis) AS influence
+    UNION ALL
+    SELECT 'День недели',
+           -- Сила влияния = разница между максимальным и минимальным средним количеством лайков по дням
+           (SELECT MAX(avg_likes) - MIN(avg_likes) FROM day_analysis)
+    UNION ALL
+    SELECT 'Промежуток между постами',
+           -- Сила влияния = разница между максимальным и минимальным средним количеством лайков по промежуткам
+           (SELECT MAX(avg_likes) - MIN(avg_likes) FROM gap_analysis)
+)
+
+-- Финальный результат: выводим факторы в порядке убывания силы влияния
+-- Чем больше значение "Сила влияния", тем сильнее данный фактор влияет на количество лайков
+SELECT factor AS "Фактор",
+       ROUND(influence, 2) AS "Сила влияния (разница в лайках)"
+FROM comparison
+ORDER BY influence DESC;  -- Сортируем по убыванию силы влияния
